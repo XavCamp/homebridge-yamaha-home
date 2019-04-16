@@ -34,9 +34,9 @@ module.exports = function (homebridge) {
 
   class YamahaAVRPlatform {
     /**
-     * 
-     * @param {Function} log 
-     * @param {ConfigObject} config 
+     *
+     * @param {Function} log
+     * @param {ConfigObject} config
      */
     constructor(log, config) {
       this.log = log;
@@ -57,6 +57,7 @@ module.exports = function (homebridge) {
       this.spotifyControls = config.spotify;
       this.partySwitch = config.party_switch;
       this.pureDirectSwitch = config.pure_direct_switch;
+      this.muteSwitch = config.mute_switch;
       this.inputAccessories = config.inputs_as_accessories || {};
       this.zoneControllersOnlyFor = config.zone_controllers_only_for || null;
     }
@@ -137,7 +138,7 @@ module.exports = function (homebridge) {
     }
 
     /**
-     * @param {bonjour.Service} bonjourService 
+     * @param {bonjour.Service} bonjourService
      */
     _setupFromService(bonjourService) {
       // Looking for name, host and port
@@ -195,6 +196,11 @@ module.exports = function (homebridge) {
             //Adding accessory with Yamaha Pure Direct.
             if (this.pureDirectSwitch) {
               accessories.push(new YamahaPureDirect(this.log, name, yamaha, sysConfig, this.service, this.characteristic));
+            }
+
+            //Adding accessory with Mute switch.
+            if (this.muteSwitch) {
+              accessories.push(new YamahaMute(this.log, name, yamaha, sysConfig, this.service, this.characteristic));
             }
 
             if (this.spotifyControls) {
@@ -291,15 +297,39 @@ module.exports = function (homebridge) {
       var pureDirectService = new this.service.Switch(this.name);
       pureDirectService.getCharacteristic(this.characteristic.On)
         .on('get', callback => this.yamaha.isPureDirectEnabled().then(result => callback(null, result)))
-        .on('set', (on, callback) => {
-          if (on) {
-            this.yamaha.powerOn().then(() => {
-              this.yamaha.setPureDirect(true).then(() => callback(null, true));
-            });
-          } else {
-            this.yamaha.setPureDirect(false).then(() => callback(null, false));
-          }
-        });
+        .on('set', (on, callback) => this.yamaha.setPureDirect(on).then(() => callback(null, on)));
+      return [informationService, pureDirectService];
+    }
+  };
+
+  //Mute Switch
+  class YamahaMute {
+    constructor(log, name, yamaha, sysConfig, service, characteristic) {
+      this.log = log;
+      this.yamaha = yamaha;
+      this.sysConfig = sysConfig;
+      this.service = service;
+      this.characteristic = characteristic;
+
+      this.name = "Mute";
+
+      this.log("Adding Mute %s", name);
+    }
+
+    getServices() {
+      var informationService = new this.service.AccessoryInformation();
+
+      informationService
+        .setCharacteristic(this.characteristic.Name, this.name)
+        .setCharacteristic(this.characteristic.Manufacturer, "yamaha-home")
+        .setCharacteristic(this.characteristic.Model, this.sysConfig.YAMAHA_AV.System[0].Config[0].Model_Name[0])
+        .setCharacteristic(this.characteristic.FirmwareRevision, require('./package.json').version)
+        .setCharacteristic(this.characteristic.SerialNumber, this.sysConfig.YAMAHA_AV.System[0].Config[0].System_ID[0]);
+
+      var pureDirectService = new this.service.Switch(this.name);
+      pureDirectService.getCharacteristic(this.characteristic.On)
+        .on('get', callback => this.yamaha.isMuted().then(result => callback(null, result)))
+        .on('set', (on, callback) => (on ? this.yamaha.muteOn() : this.yamaha.muteOff()).then(() => callback(null, on)));
       return [informationService, pureDirectService];
     }
   };
